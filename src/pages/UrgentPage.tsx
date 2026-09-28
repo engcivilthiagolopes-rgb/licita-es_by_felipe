@@ -9,7 +9,7 @@ import {
   Shield,
   Zap,
 } from 'lucide-react';
-import type { ProcurementItem } from '@/types';
+import type { Cnae, ProcurementItem } from '@/types';
 import { formatBRL } from '@/data/mockData';
 import { PortalBadge } from '@/components/ui/PortalBadge';
 import { RiskBadge } from '@/components/ui/RiskBadge';
@@ -17,20 +17,43 @@ import { CountdownTimer } from '@/components/ui/CountdownTimer';
 
 interface UrgentPageProps {
   items: ProcurementItem[];
+  cnaes: Cnae[];
+  searchQuery: string;
   onViewItem: (item: ProcurementItem) => void;
   onSendToKanban: (id: string) => void;
 }
 
 type SortMode = 'urgent' | 'value' | 'risk';
 
-export function UrgentPage({ items, onViewItem, onSendToKanban }: UrgentPageProps) {
+export function UrgentPage({ items, cnaes, searchQuery, onViewItem, onSendToKanban }: UrgentPageProps) {
   const [sortMode, setSortMode] = useState<SortMode>('urgent');
   const [filterPortal, setFilterPortal] = useState<string>('all');
 
   const sortedItems = useMemo(() => {
-    let filtered = items.filter((i) => i.column === 'triagem' || i.column === 'disputa');
+    const enabledCnaeCodes = new Set(cnaes.filter((c) => c.enabled).map((c) => c.code));
+    const q = searchQuery.trim().toLowerCase();
+    let filtered = items.filter(
+      (i) => enabledCnaeCodes.has(i.cnaeMatch) && (i.column === 'triagem' || i.column === 'disputa'),
+    );
     if (filterPortal !== 'all') {
       filtered = filtered.filter((i) => i.portal === filterPortal);
+    }
+    if (q) {
+      filtered = filtered.filter((i) => {
+        const haystack = [
+          i.title,
+          i.buyerOrgan,
+          i.municipality,
+          i.region,
+          i.cnaeMatch,
+          i.portal,
+          i.objectDescription,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      });
     }
     const sorted = [...filtered];
     if (sortMode === 'urgent') {
@@ -41,7 +64,7 @@ export function UrgentPage({ items, onViewItem, onSendToKanban }: UrgentPageProp
       sorted.sort((a, b) => a.riskScore - b.riskScore);
     }
     return sorted;
-  }, [items, sortMode, filterPortal]);
+  }, [items, cnaes, sortMode, filterPortal, searchQuery]);
 
   const urgentCount = sortedItems.filter((i) => {
     const diff = new Date(i.closesAt).getTime() - Date.now();

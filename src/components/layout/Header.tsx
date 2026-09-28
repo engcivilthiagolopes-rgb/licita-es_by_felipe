@@ -7,9 +7,11 @@ interface HeaderProps {
   notificationCount: number;
   onNotificationClick: () => void;
   lastSync: Date;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
 }
 
-export function Header({ onMenuClick, notificationCount, onNotificationClick, lastSync }: HeaderProps) {
+export function Header({ onMenuClick, notificationCount, onNotificationClick, lastSync, searchQuery, onSearchChange }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
   const syncTime = lastSync.toLocaleTimeString('pt-BR', {
@@ -32,6 +34,8 @@ export function Header({ onMenuClick, notificationCount, onNotificationClick, la
           <Search className="h-4 w-4 text-muted" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Buscar licitação, órgão, CNAE..."
             className="w-48 bg-transparent text-sm text-default placeholder:text-muted focus:outline-none lg:w-64"
           />

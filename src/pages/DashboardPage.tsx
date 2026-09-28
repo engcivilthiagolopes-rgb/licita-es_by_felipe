@@ -24,10 +24,17 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
-import { BUYING_ORGANS, COMPETITORS, formatBRL, INITIAL_ITEMS, LOW_COMPETITION_REGIONS } from '@/data/mockData';
+import { BUYING_ORGANS, COMPETITORS, formatBRL, LOW_COMPETITION_REGIONS } from '@/data/mockData';
 import { useTheme } from '@/context/ThemeContext';
+import type { Cnae, ProcurementItem } from '@/types';
 
-export function DashboardPage() {
+interface DashboardPageProps {
+  items: ProcurementItem[];
+  cnaes: Cnae[];
+  searchQuery: string;
+}
+
+export function DashboardPage({ items, cnaes, searchQuery }: DashboardPageProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -37,26 +44,84 @@ export function DashboardPage() {
   const tooltipBorder = isDark ? '#262d40' : '#e2e8f0';
   const tooltipText = isDark ? '#f1f5f9' : '#0f172a';
 
-  const totalValue = useMemo(() => INITIAL_ITEMS.reduce((s, i) => s + i.estimatedValue, 0), []);
-  const activeCount = INITIAL_ITEMS.filter((i) => i.column !== 'homologada').length;
-  const urgentCount = INITIAL_ITEMS.filter((i) => {
-    return new Date(i.closesAt).getTime() - Date.now() < 4 * 3600_000;
-  }).length;
-  const lowCompetitionCount = INITIAL_ITEMS.filter((i) => i.competitorCount < 3).length;
-
-  const topOrgansData = useMemo(
-    () =>
-      [...BUYING_ORGANS]
-        .sort((a, b) => b.totalValue - a.totalValue)
-        .slice(0, 6)
-        .map((o) => ({
-          name: o.organ.length > 22 ? o.organ.slice(0, 22) + '…' : o.organ,
-          fullName: o.organ,
-          value: o.totalValue,
-          contracts: o.contracts,
-        })),
-    [],
+  const enabledCnaeCodes = useMemo(
+    () => new Set(cnaes.filter((c) => c.enabled).map((c) => c.code)),
+    [cnaes],
   );
+  const normalizedSearch = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery],
+  );
+  const filteredItems = useMemo(() => {
+    return items
+      .filter((i) => enabledCnaeCodes.has(i.cnaeMatch))
+      .filter((i) => {
+        if (!normalizedSearch) return true;
+        const haystack = [
+          i.title,
+          i.buyerOrgan,
+          i.municipality,
+          i.region,
+          i.cnaeMatch,
+          i.portal,
+          i.objectDescription,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      });
+  }, [items, enabledCnaeCodes, normalizedSearch]);
+
+  const totalValue = useMemo(
+    () => filteredItems.reduce((s, i) => s + i.estimatedValue, 0),
+    [filteredItems],
+  );
+  const activeCount = useMemo(
+    () => filteredItems.filter((i) => i.column !== 'homologada').length,
+    [filteredItems],
+  );
+  const urgentCount = useMemo(() => {
+    return filteredItems.filter((i) => {
+      return new Date(i.closesAt).getTime() - Date.now() < 4 * 3600_000;
+    }).length;
+  }, [filteredItems]);
+  const lowCompetitionCount = useMemo(
+    () => filteredItems.filter((i) => i.competitorCount < 3).length,
+    [filteredItems],
+  );
+
+  const topOrgansData = useMemo(() => {
+    const aggregates = new Map<string, { organ: string; municipality: string; totalValue: number; contracts: number; region: string }>();
+    filteredItems.forEach((item) => {
+      const existing = aggregates.get(item.buyerOrgan);
+      if (existing) {
+        existing.totalValue += item.estimatedValue;
+        existing.contracts += 1;
+      } else {
+        aggregates.set(item.buyerOrgan, {
+          organ: item.buyerOrgan,
+          municipality: item.municipality,
+          totalValue: item.estimatedValue,
+          contracts: 1,
+          region: item.region,
+        });
+      }
+    });
+    const merged = Array.from(aggregates.values());
+    BUYING_ORGANS.forEach((bo) => {
+      if (!aggregates.has(bo.organ)) merged.push(bo);
+    });
+    return merged
+      .sort((a, b) => b.totalValue - a.totalValue)
+      .slice(0, 6)
+      .map((o) => ({
+        name: o.organ.length > 22 ? o.organ.slice(0, 22) + '…' : o.organ,
+        fullName: o.organ,
+        value: o.totalValue,
+        contracts: o.contracts,
+      }));
+  }, [filteredItems]);
 
   const cnaeDistribution = useMemo(() => {
     const cnaeNames: Record<string, string> = {
@@ -70,7 +135,7 @@ export function DashboardPage() {
       '4789-0/07': 'Informática',
     };
     const counts: Record<string, number> = {};
-    INITIAL_ITEMS.forEach((i) => {
+    filteredItems.forEach((i) => {
       counts[i.cnaeMatch] = (counts[i.cnaeMatch] || 0) + 1;
     });
     const colors = ['#0d9488', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#10b981', '#ec4899', '#6366f1'];
@@ -79,15 +144,15 @@ export function DashboardPage() {
       value: count,
       color: colors[i % colors.length],
     }));
-  }, []);
+  }, [filteredItems]);
 
   const regionData = useMemo(() => {
     const regions: Record<string, number> = {};
-    INITIAL_ITEMS.forEach((i) => {
+    filteredItems.forEach((i) => {
       regions[i.region] = (regions[i.region] || 0) + i.estimatedValue;
     });
     return Object.entries(regions).map(([region, value]) => ({ region, value }));
-  }, []);
+  }, [filteredItems]);
 
   return (
     <div className="space-y-6">

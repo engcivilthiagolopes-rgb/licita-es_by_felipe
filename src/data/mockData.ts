@@ -39,7 +39,6 @@ export const INITIAL_CNAES: Cnae[] = [
 
 const now = Date.now();
 const hoursFromNow = (h: number) => new Date(now + h * 3600_000).toISOString();
-const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
 
 export const INITIAL_ITEMS: ProcurementItem[] = [
   {

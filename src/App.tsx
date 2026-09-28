@@ -11,43 +11,87 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { INITIAL_CNAES, INITIAL_ITEMS } from '@/data/mockData';
 import type { AlertSettings, Cnae, KanbanColumn, ProcurementItem } from '@/types';
 
+const LS_KEYS = {
+  items: 'meu-filtro-items',
+  cnaes: 'meu-filtro-cnaes',
+  alerts: 'meu-filtro-alerts',
+  notifications: 'meu-filtro-notifications',
+} as const;
+
+function safeParse<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function AppContent() {
   const [page, setPage] = useState<Page>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [cnaes, setCnaes] = useState<Cnae[]>(INITIAL_CNAES);
-  const [items, setItems] = useState<ProcurementItem[]>(INITIAL_ITEMS);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cnaes, setCnaes] = useState<Cnae[]>(() =>
+    safeParse<Cnae[]>(localStorage.getItem(LS_KEYS.cnaes), INITIAL_CNAES),
+  );
+  const [items, setItems] = useState<ProcurementItem[]>(() =>
+    safeParse<ProcurementItem[]>(localStorage.getItem(LS_KEYS.items), INITIAL_ITEMS),
+  );
   const [selectedItem, setSelectedItem] = useState<ProcurementItem | null>(null);
   const [lastSync, setLastSync] = useState(new Date());
-  const [notifications, setNotifications] = useState<AppNotification[]>([
-    {
-      id: 'n1',
-      type: 'new',
-      title: 'Nova Dispensa Eletrônica',
-      message: 'Câmara Municipal de Cantagalo - Papelaria e Escritório',
-      timestamp: new Date(Date.now() - 5 * 60_000),
-    },
-    {
-      id: 'n2',
-      type: 'closing',
-      title: 'Edital encerra em 30 minutos',
-      message: 'Prefeitura de Niterói - Produtos de Limpeza',
-      timestamp: new Date(Date.now() - 12 * 60_000),
-    },
-    {
-      id: 'n3',
-      type: 'low_competition',
-      title: 'Baixa concorrência detectada',
-      message: 'Nova Friburgo: apenas 1 competidor identificado',
-      timestamp: new Date(Date.now() - 25 * 60_000),
-    },
-  ]);
-  const [alerts, setAlerts] = useState<AlertSettings>({
-    whatsapp: true,
-    telegram: false,
-    push: true,
-    email: true,
-  });
+  const [notifications, setNotifications] = useState<AppNotification[]>(() =>
+    safeParse<AppNotification[]>(localStorage.getItem(LS_KEYS.notifications), [
+      {
+        id: 'n1',
+        type: 'new',
+        title: 'Nova Dispensa Eletrônica',
+        message: 'Câmara Municipal de Cantagalo - Papelaria e Escritório',
+        timestamp: new Date(Date.now() - 5 * 60_000),
+      },
+      {
+        id: 'n2',
+        type: 'closing',
+        title: 'Edital encerra em 30 minutos',
+        message: 'Prefeitura de Niterói - Produtos de Limpeza',
+        timestamp: new Date(Date.now() - 12 * 60_000),
+      },
+      {
+        id: 'n3',
+        type: 'low_competition',
+        title: 'Baixa concorrência detectada',
+        message: 'Nova Friburgo: apenas 1 competidor identificado',
+        timestamp: new Date(Date.now() - 25 * 60_000),
+      },
+    ]).map((n) => ({ ...n, timestamp: new Date(n.timestamp) })),
+  );
+  const [alerts, setAlerts] = useState<AlertSettings>(() =>
+    safeParse<AlertSettings>(localStorage.getItem(LS_KEYS.alerts), {
+      whatsapp: true,
+      telegram: false,
+      push: true,
+      email: true,
+    }),
+  );
+
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.items, JSON.stringify(items));
+  }, [items]);
+
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.cnaes, JSON.stringify(cnaes));
+  }, [cnaes]);
+
+  useEffect(() => {
+    localStorage.setItem(LS_KEYS.alerts, JSON.stringify(alerts));
+  }, [alerts]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      LS_KEYS.notifications,
+      JSON.stringify(notifications.map((n) => ({ ...n, timestamp: n.timestamp instanceof Date ? n.timestamp.toISOString() : n.timestamp }))),
+    );
+  }, [notifications]);
 
   // Simulate periodic sync
   useEffect(() => {
@@ -106,12 +150,16 @@ function AppContent() {
           notificationCount={notifications.length}
           onNotificationClick={() => setNotifOpen(true)}
           lastSync={lastSync}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
         />
         <main className="flex-1 overflow-y-auto scrollbar-thin p-4 lg:p-6">
-          {page === 'dashboard' && <DashboardPage />}
+          {page === 'dashboard' && <DashboardPage items={items} cnaes={cnaes} searchQuery={searchQuery} />}
           {page === 'kanban' && (
             <KanbanPage
               items={items}
+              cnaes={cnaes}
+              searchQuery={searchQuery}
               onMoveItem={handleMoveItem}
               onViewItem={setSelectedItem}
             />
@@ -119,6 +167,8 @@ function AppContent() {
           {page === 'urgent' && (
             <UrgentPage
               items={items}
+              cnaes={cnaes}
+              searchQuery={searchQuery}
               onViewItem={setSelectedItem}
               onSendToKanban={handleSendToKanban}
             />
